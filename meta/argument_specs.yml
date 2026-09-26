@@ -1,0 +1,91 @@
+---
+# role: openbao
+# file: meta/argument_specs.yml
+
+argument_specs:
+  main:
+    short_description: Set up a single-node OpenBao server with automatic unsealing.
+    description:
+      - Installs the distribution OpenBao server package and configures integrated raft
+        storage on a single node.
+      - Encrypts the static seal key as systemd credential bound to the host secret and
+        optionally to the TPM2.
+      - Enables and starts the OpenBao service and restarts it after configuration changes.
+    options:
+      openbao_seal_key:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Static seal key, 32 bytes encoded as 64 hexadecimal or 44 base64 characters.
+          - The key is the only way to decrypt the storage; keep it in Ansible Vault and
+            never change it after initialization.
+      openbao_seal_key_id:
+        type: str
+        required: false
+        default: openbao-seal-1
+        description:
+          - Permanent identifier of the static seal key; keep it unchanged after initialization.
+      openbao_seal_credential_key:
+        type: str
+        required: false
+        default: host+tpm2
+        choices:
+          - host+tpm2
+          - host
+        description:
+          - Key binding used by systemd-creds to encrypt the seal key credential.
+          - host+tpm2 requires a TPM2 device such as a vTPM; host binds only to the host
+            credential secret.
+      openbao_tls_cert_file:
+        type: path
+        required: true
+        description:
+          - TLS certificate file on the target presented by the API listener.
+      openbao_tls_key_file:
+        type: path
+        required: true
+        description:
+          - TLS private key file on the target, readable by the openbao service account.
+      openbao_listener_address:
+        type: str
+        required: false
+        default: 0.0.0.0:8200
+        description:
+          - Address and port of the TLS API listener.
+      openbao_api_addr:
+        type: str
+        required: false
+        default: https://{{ ansible_facts.fqdn }}:8200
+        description:
+          - API address advertised to clients.
+      openbao_raft_path:
+        type: path
+        required: false
+        default: /var/lib/openbao/raft
+        description:
+          - Directory of the integrated raft storage.
+      openbao_raft_node_id:
+        type: str
+        required: false
+        default: '{{ ansible_facts.hostname }}'
+        description:
+          - Raft node identifier; keep it unchanged after initialization.
+      openbao_ui:
+        type: bool
+        required: false
+        default: true
+        description:
+          - Serve the web UI on the API listener.
+      openbao_log_level:
+        type: str
+        required: false
+        default: info
+        choices:
+          - trace
+          - debug
+          - info
+          - warn
+          - error
+        description:
+          - Server log level.

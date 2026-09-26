@@ -1,0 +1,18 @@
+---
+# role: openbao
+# file: handlers/main.yml
+
+- name: OPENBAO | Reload systemd units
+  become: true
+  become_user: root
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  listen: daemon reload
+
+- name: OPENBAO | Restart service
+  become: true
+  become_user: root
+  ansible.builtin.systemd_service:
+    name: "{{ __openbao_service_name }}"
+    state: restarted
+  listen: restart

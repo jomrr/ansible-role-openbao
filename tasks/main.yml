@@ -1,0 +1,131 @@
+---
+# role: openbao
+# file: tasks/main.yml
+
+- name: OPENBAO | Load platform settings
+  ansible.builtin.include_vars: "{{ lookup('ansible.builtin.first_found', __openbao_platform_files) }}"
+  vars:
+    __openbao_platform_files:
+      files:
+        - "{{ ansible_facts.distribution }}.yml"
+        - "{{ ansible_facts.os_family }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
+
+- name: OPENBAO | Validate inputs
+  ansible.builtin.import_tasks: assert.yml
+
+- name: OPENBAO | Install repository packages
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ __openbao_repository_packages }}"
+
+- name: OPENBAO | Install packages
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: "{{ __openbao_packages }}"
+    state: present
+
+- name: OPENBAO | Install TPM2 libraries for systemd-creds
+  become: true
+  become_user: root
+  ansible.builtin.package:
+    name: "{{ __openbao_tpm2_packages }}"
+    state: present
+  when: openbao_seal_credential_key == 'host+tpm2'
+
+- name: OPENBAO | Create raft storage directory
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: "{{ openbao_raft_path }}"
+    state: directory
+    owner: "{{ __openbao_user }}"
+    group: "{{ __openbao_group }}"
+    mode: "0700"
+
+- name: OPENBAO | Encrypt the seal key as systemd credential
+  become: true
+  become_user: root
+  ansible.builtin.command:
+    argv:
+      - systemd-creds
+      - encrypt
+      - "--name={{ __openbao_seal_credential_name }}"
+      - "--with-key={{ openbao_seal_credential_key }}"
+      - --tpm2-pcrs=
+      - "-"
+      - "{{ __openbao_seal_credential_file }}"
+    stdin: "{{ openbao_seal_key }}"
+    stdin_add_newline: false
+    creates: "{{ __openbao_seal_credential_file }}"
+  no_log: true
+  notify: restart
+
+- name: OPENBAO | Restrict the seal key credential
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: "{{ __openbao_seal_credential_file }}"
+    state: file
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: OPENBAO | Remove the seal key credential of the unused key binding
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ __openbao_seal_credential_files.values() | reject('eq', __openbao_seal_credential_file) }}"
+
+- name: OPENBAO | Create service drop-in directory
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: "{{ __openbao_service_dropin_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: OPENBAO | Load the seal key credential into the service
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: seal-credential.conf.j2
+    dest: "{{ __openbao_service_dropin_dir }}/seal-credential.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - daemon reload
+    - restart
+
+- name: OPENBAO | Configure OpenBao
+  become: true
+  become_user: root
+  ansible.builtin.template:
+    src: openbao.hcl.j2
+    dest: "{{ __openbao_config_file }}"
+    owner: root
+    group: "{{ __openbao_group }}"
+    mode: "0640"
+    backup: true
+  notify: restart
+
+- name: OPENBAO | Apply configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: OPENBAO | Enable and start service
+  become: true
+  become_user: root
+  ansible.builtin.systemd_service:
+    name: "{{ __openbao_service_name }}"
+    enabled: true
+    state: started

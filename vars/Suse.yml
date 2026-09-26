@@ -1,0 +1,21 @@
+---
+# role: openbao
+# file: vars/Suse.yml
+
+# Packages enabling the repository that provides OpenBao
+__openbao_repository_packages: []
+
+# OpenBao server packages
+__openbao_packages:
+  - openbao-server
+
+# TPM2 libraries loaded by systemd-creds for TPM2-bound credentials
+__openbao_tpm2_packages:
+  - libtss2-esys0
+  - libtss2-mu0
+  - libtss2-rc0
+  - libtss2-tctildr0
+  - libtss2-tcti-device0
+
+# Configuration file loaded by the service unit
+__openbao_config_file: /etc/openbao/openbao.hcl

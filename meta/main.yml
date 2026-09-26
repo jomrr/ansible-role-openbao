@@ -1,0 +1,19 @@
+---
+# role: openbao
+# file: meta/main.yml
+
+galaxy_info:
+  author: Jonas Mauer
+  description: Ansible role for setting up a single-node OpenBao server with automatic unsealing.
+  galaxy_tags:
+    - ansible
+    - role
+    - openbao
+    - secrets
+    - raft
+    - tpm
+  issue_tracker_url: https://github.com/jomrr/ansible-role-openbao/issues
+  license: MIT
+  min_ansible_version: "2.20"
+  namespace: jomrr
+  role_name: openbao

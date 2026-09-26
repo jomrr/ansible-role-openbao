@@ -1,0 +1,41 @@
+---
+# role: openbao
+# file: defaults/main.yml
+
+# Static seal key of 32 bytes, encoded as 64 hexadecimal or 44 base64 characters and supplied through a secret store.
+# openbao_seal_key:
+# Example: openbao_seal_key: "{{ vault_openbao_seal_key }}"
+
+# Permanent identifier of the static seal key, unchanged after initialization.
+openbao_seal_key_id: openbao-seal-1
+
+# Key binding used by systemd-creds to encrypt the seal key credential.
+# Choices: host+tpm2, host
+openbao_seal_credential_key: host+tpm2
+
+# TLS certificate file on the target presented by the API listener.
+# openbao_tls_cert_file:
+# Example: openbao_tls_cert_file: /etc/pki/tls/certs/openbao.crt
+
+# TLS private key file on the target, readable by the openbao service account.
+# openbao_tls_key_file:
+# Example: openbao_tls_key_file: /etc/pki/tls/private/openbao.key
+
+# Address and port of the TLS API listener.
+openbao_listener_address: 0.0.0.0:8200
+
+# API address advertised to clients.
+openbao_api_addr: "https://{{ ansible_facts.fqdn }}:8200"
+
+# Directory of the integrated raft storage.
+openbao_raft_path: /var/lib/openbao/raft
+
+# Raft node identifier, unchanged after initialization.
+openbao_raft_node_id: "{{ ansible_facts.hostname }}"
+
+# Serve the web UI on the API listener.
+openbao_ui: true
+
+# Server log level.
+# Choices: trace, debug, info, warn, error
+openbao_log_level: info

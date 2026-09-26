@@ -1,0 +1,37 @@
+---
+# role: openbao
+# file: molecule/resources/playbooks/side_effect.yml
+
+- name: "OPENBAO | Initialize OpenBao and lose the seal key credential"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "OPENBAO | Wait for the API listener"
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 8200
+
+    - name: "OPENBAO | Initialize OpenBao with one recovery key"
+      ansible.builtin.uri:
+        url: https://127.0.0.1:8200/v1/sys/init
+        method: POST
+        body_format: json
+        body:
+          recovery_shares: 1
+          recovery_threshold: 1
+        ca_path: /etc/pki/molecule/openbao.crt
+      no_log: true
+
+    - name: "OPENBAO | Stop OpenBao"
+      become: true
+      become_user: root
+      ansible.builtin.systemd_service:
+        name: openbao.service
+        state: stopped
+
+    - name: "OPENBAO | Remove the seal key credential as after a lost key binding"
+      become: true
+      become_user: root
+      ansible.builtin.file:
+        path: /etc/credstore.encrypted/openbao-seal-key.host.cred
+        state: absent

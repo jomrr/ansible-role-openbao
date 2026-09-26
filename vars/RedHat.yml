@@ -1,0 +1,17 @@
+---
+# role: openbao
+# file: vars/RedHat.yml
+
+# Packages enabling the repository that provides OpenBao
+__openbao_repository_packages: []
+
+# OpenBao server packages
+__openbao_packages:
+  - openbao
+
+# TPM2 libraries loaded by systemd-creds for TPM2-bound credentials
+__openbao_tpm2_packages:
+  - tpm2-tss
+
+# Configuration file in the directory loaded by the service unit
+__openbao_config_file: /etc/openbao.d/openbao.hcl

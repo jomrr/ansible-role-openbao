@@ -1,0 +1,30 @@
+---
+# role: openbao
+# file: vars/main.yml
+
+# Service account running OpenBao, created by the package
+__openbao_user: openbao
+__openbao_group: openbao
+
+# Service unit shipped by the package
+__openbao_service_name: openbao.service
+
+# Drop-in directory of the service unit
+__openbao_service_dropin_dir: "/etc/systemd/system/{{ __openbao_service_name }}.d"
+
+# Credential name embedded in the encrypted seal key and exposed to the service
+__openbao_seal_credential_name: openbao-seal-key
+
+# Encrypted seal key credential per systemd-creds key binding
+__openbao_seal_credential_files:
+  host: /etc/credstore.encrypted/openbao-seal-key.host.cred
+  host+tpm2: /etc/credstore.encrypted/openbao-seal-key.host-tpm2.cred
+
+# Encrypted seal key credential of the selected key binding
+__openbao_seal_credential_file: "{{ __openbao_seal_credential_files[openbao_seal_credential_key] }}"
+
+# Decrypted seal key provided by systemd to the running service
+__openbao_seal_key_runtime_file: "/run/credentials/{{ __openbao_service_name }}/{{ __openbao_seal_credential_name }}"
+
+# Cluster listener of the single raft node, bound to loopback
+__openbao_cluster_address: 127.0.0.1:8201

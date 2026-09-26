@@ -1,0 +1,64 @@
+---
+# role: openbao
+# file: molecule/default/molecule.yml
+
+dependency:
+  name: "galaxy"
+  options:
+    requirements-file: "${MOLECULE_PROJECT_DIRECTORY}/collections.yml"
+    role-file: "${MOLECULE_PROJECT_DIRECTORY}/collections.yml"
+driver:
+  name: "podman"
+provisioner:
+  name: "ansible"
+  config_options:
+    defaults:
+      forks: 8
+      interpreter_python: "auto_silent"
+      allow_world_readable_tmpfiles: true
+      callbacks_enabled: "ansible.posix.profile_tasks,ansible.posix.timer"
+      callback_result_format: "yaml"
+      remote_tmp: "/tmp/.ansible/tmp"
+    ssh_connection:
+      pipelining: true
+  log: true
+  playbooks:
+    prepare: "../resources/playbooks/prepare.yml"
+    converge: "../resources/playbooks/converge.yml"
+    verify: "../resources/playbooks/verify.yml"
+    side_effect: "../resources/playbooks/side_effect.yml"
+  inventory:
+    group_vars:
+      all:
+        openbao_seal_key: "421a64113eb029ed5d83e3fe4f3d4fadc5a31ed3ca698000b51013aebb7fbad4"
+        openbao_seal_credential_key: "host"
+        openbao_tls_cert_file: "/etc/pki/molecule/openbao.crt"
+        openbao_tls_key_file: "/etc/pki/molecule/openbao.key"
+verifier:
+  name: "ansible"
+scenario:
+  test_sequence:
+    - "dependency"
+    - "destroy"
+    - "syntax"
+    - "create"
+    - "prepare"
+    - "converge"
+    - "idempotence"
+    - "check"
+    - "side_effect"
+    - "converge"
+    - "idempotence"
+    - "verify"
+    - "destroy"
+  name: "default"
+platforms:
+  - name: "openbao"
+    image: "docker.io/${uns:-jomrr}/molecule-${img:-fedora}:${tag:-latest}"
+    pre_build_image: true
+    override_command: false
+    systemd: "true"
+    capabilities:
+      - "SYS_ADMIN"
+    security_opts:
+      - "label=disable"

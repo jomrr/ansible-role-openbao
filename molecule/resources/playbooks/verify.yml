@@ -1,0 +1,56 @@
+---
+# role: openbao
+# file: molecule/resources/playbooks/verify.yml
+
+- name: "OPENBAO | Verify automatic unsealing"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "OPENBAO | Wait until the restarted server is unsealed"
+      ansible.builtin.uri:
+        url: https://127.0.0.1:8200/v1/sys/health
+        ca_path: /etc/pki/molecule/openbao.crt
+      register: __openbao_health
+      until: __openbao_health.status == 200
+      retries: 20
+      delay: 3
+
+    - name: "OPENBAO | Read the seal status"
+      ansible.builtin.uri:
+        url: https://127.0.0.1:8200/v1/sys/seal-status
+        ca_path: /etc/pki/molecule/openbao.crt
+      register: __openbao_seal_status
+
+    - name: "OPENBAO | Assert the static seal unsealed the raft storage"
+      ansible.builtin.assert:
+        that:
+          - __openbao_seal_status.json.type == 'static'
+          - __openbao_seal_status.json.storage_type == 'raft'
+          - __openbao_seal_status.json.initialized
+          - not __openbao_seal_status.json.sealed
+        quiet: true
+
+    - name: "OPENBAO | Collect service states"
+      ansible.builtin.service_facts:
+
+    - name: "OPENBAO | Assert the service is enabled and running"
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.services['openbao.service'].status == 'enabled'
+          - ansible_facts.services['openbao.service'].state == 'running'
+        quiet: true
+
+    - name: "OPENBAO | Read the seal key credential"
+      become: true
+      become_user: root
+      ansible.builtin.slurp:
+        src: /etc/credstore.encrypted/openbao-seal-key.host.cred
+      register: __openbao_credential
+      no_log: true
+
+    - name: "OPENBAO | Assert the seal key is not stored in plain text"
+      ansible.builtin.assert:
+        that:
+          - openbao_seal_key not in (__openbao_credential.content | b64decode)
+        quiet: true
+      no_log: true

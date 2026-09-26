@@ -1,0 +1,26 @@
+# Managed by ansible.
+# file: {{ template_destpath }}
+
+ui        = {{ openbao_ui | ternary('true', 'false') }}
+log_level = {{ openbao_log_level | to_json }}
+
+api_addr     = {{ openbao_api_addr | to_json }}
+cluster_addr = {{ ('https://' ~ __openbao_cluster_address) | to_json }}
+
+storage "raft" {
+  path                   = {{ openbao_raft_path | to_json }}
+  node_id                = {{ openbao_raft_node_id | to_json }}
+  performance_multiplier = 1
+}
+
+listener "tcp" {
+  address         = {{ openbao_listener_address | to_json }}
+  cluster_address = {{ __openbao_cluster_address | to_json }}
+  tls_cert_file   = {{ openbao_tls_cert_file | to_json }}
+  tls_key_file    = {{ openbao_tls_key_file | to_json }}
+}
+
+seal "static" {
+  current_key_id = {{ openbao_seal_key_id | to_json }}
+  current_key    = {{ ('file://' ~ __openbao_seal_key_runtime_file) | to_json }}
+}
