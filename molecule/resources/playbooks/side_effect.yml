@@ -2,7 +2,7 @@
 # role: openbao
 # file: molecule/resources/playbooks/side_effect.yml
 
-- name: "OPENBAO | Initialize OpenBao and lose the seal key credential"
+- name: "OPENBAO | Lose the seal key credential on an initialized server"
   hosts: all
   gather_facts: false
   tasks:
@@ -21,6 +21,7 @@
           recovery_threshold: 1
         ca_path: /etc/pki/molecule/openbao.crt
       no_log: true
+      when: not openbao_bootstrap_enabled
 
     - name: "OPENBAO | Stop OpenBao"
       become: true
@@ -29,9 +30,14 @@
         name: openbao.service
         state: stopped
 
-    - name: "OPENBAO | Remove the seal key credential as after a lost key binding"
+    - name: "OPENBAO | Remove the credentials as after a lost key binding"
       become: true
       become_user: root
       ansible.builtin.file:
-        path: /etc/credstore.encrypted/openbao-seal-key.host.cred
+        path: "{{ __openbao_test_credential }}"
         state: absent
+      loop:
+        - /etc/credstore.encrypted/openbao-seal-key.host.cred
+        - /etc/credstore.encrypted/openbao-bootstrap-secret-id.host.cred
+      loop_control:
+        loop_var: __openbao_test_credential

@@ -2,84 +2,9 @@
 # role: openbao
 # file: molecule/resources/playbooks/prepare.yml
 
-- name: "OPENBAO | Prepare test hosts"
+- name: OPENBAO | Prepare test hosts
   hosts: all
   gather_facts: true
   tasks:
-    - name: "OPENBAO | Refresh DNF package metadata"
-      become: true
-      become_user: root
-      ansible.builtin.dnf:
-        update_cache: true
-      when: ansible_facts.pkg_mgr in ['dnf', 'dnf5']
-
-    - name: "OPENBAO | Refresh Zypper package metadata"
-      become: true
-      become_user: root
-      community.general.zypper_repository:
-        repo: '*'
-        runrefresh: true
-      when: ansible_facts.pkg_mgr == 'zypper'
-
-    # Containers keep mounts private; systemd 257 (AlmaLinux 10) moves each service credential
-    # mount below /run/credentials and needs shared propagation there, as on a booted host.
-    - name: "OPENBAO | Share mount propagation of the credentials directory"
-      become: true
-      become_user: root
-      ansible.posix.mount:
-        src: /run/credentials
-        path: /run/credentials
-        fstype: none
-        opts: bind,shared
-        state: ephemeral
-
-    - name: "OPENBAO | Install OpenSSL for the test certificate"
-      become: true
-      become_user: root
-      ansible.builtin.package:
-        name: openssl
-        state: present
-
-    - name: "OPENBAO | Create test certificate directory"
-      become: true
-      become_user: root
-      ansible.builtin.file:
-        path: /etc/pki/molecule
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
-    - name: "OPENBAO | Create self-signed test certificate for the loopback listener"
-      become: true
-      become_user: root
-      ansible.builtin.command:
-        argv:
-          - openssl
-          - req
-          - -x509
-          - -newkey
-          - ec
-          - -pkeyopt
-          - ec_paramgen_curve:prime256v1
-          - -nodes
-          - -days
-          - "7"
-          - -subj
-          - /CN=localhost
-          - -addext
-          - subjectAltName=IP:127.0.0.1,DNS:localhost
-          - -keyout
-          - /etc/pki/molecule/openbao.key
-          - -out
-          - /etc/pki/molecule/openbao.crt
-        creates: /etc/pki/molecule/openbao.crt
-
-    # The openbao account does not exist before converge; the throwaway test key is world-readable.
-    - name: "OPENBAO | Allow the service account to read the test key"
-      become: true
-      become_user: root
-      ansible.builtin.file:
-        path: /etc/pki/molecule/openbao.key
-        state: file
-        mode: "0644"
+    - name: OPENBAO | Prepare systemd and TLS integration fixtures
+      ansible.builtin.import_tasks: ../tasks/prepare.yml

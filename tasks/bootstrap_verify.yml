@@ -1,0 +1,40 @@
+---
+# role: openbao
+# file: tasks/bootstrap_verify.yml
+
+- name: OPENBAO | Wait for initialization and automatic unsealing
+  ansible.builtin.uri:
+    url: "{{ openbao_api_addr }}/v1/sys/health"
+    ca_path: "{{ openbao_api_ca_file | default(omit) }}"
+    use_netrc: false
+    follow_redirects: none
+  register: __openbao_bootstrap_health
+  until: __openbao_bootstrap_health.status == 200
+  retries: 20
+  delay: 3
+
+- name: OPENBAO | Verify the management AppRole
+  ansible.builtin.uri:
+    url: "{{ openbao_api_addr }}/v1/auth/ansible/login"
+    ca_path: "{{ openbao_api_ca_file | default(omit) }}"
+    use_netrc: false
+    follow_redirects: none
+    method: POST
+    body_format: json
+    body:
+      role_id: "{{ openbao_bootstrap_role_id }}"
+      secret_id: "{{ openbao_bootstrap_secret_id }}"
+  register: __openbao_bootstrap_login
+  no_log: true
+
+- name: OPENBAO | Revoke the verification token
+  ansible.builtin.uri:
+    url: "{{ openbao_api_addr }}/v1/auth/token/revoke-self"
+    ca_path: "{{ openbao_api_ca_file | default(omit) }}"
+    use_netrc: false
+    follow_redirects: none
+    method: POST
+    headers:
+      X-Vault-Token: "{{ __openbao_bootstrap_login.json.auth.client_token }}"
+    status_code: 204
+  no_log: true

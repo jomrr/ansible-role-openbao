@@ -54,3 +54,66 @@
           - openbao_seal_key not in (__openbao_credential.content | b64decode)
         quiet: true
       no_log: true
+
+    - name: "OPENBAO | Verify bootstrap management access and declarative audit"
+      when: openbao_bootstrap_enabled
+      block:
+        - name: "OPENBAO | Authenticate using the bootstrapped AppRole"
+          ansible.builtin.uri:
+            url: https://127.0.0.1:8200/v1/auth/ansible/login
+            method: POST
+            body_format: json
+            body:
+              role_id: "{{ openbao_bootstrap_role_id }}"
+              secret_id: "{{ openbao_bootstrap_secret_id }}"
+            ca_path: /etc/pki/molecule/openbao.crt
+          register: __openbao_test_login
+          no_log: true
+
+        - name: "OPENBAO | Read configured audit devices"
+          ansible.builtin.uri:
+            url: https://127.0.0.1:8200/v1/sys/audit
+            ca_path: /etc/pki/molecule/openbao.crt
+            headers:
+              X-Vault-Token: "{{ __openbao_test_login.json.auth.client_token }}"
+          register: __openbao_test_audit
+          no_log: true
+
+        - name: "OPENBAO | Assert the management policy and file audit device"
+          ansible.builtin.assert:
+            that:
+              - "'ansible-admin' in __openbao_test_login.json.auth.policies"
+              - "'root' not in __openbao_test_login.json.auth.policies"
+              - __openbao_test_audit.json.data['file/'].options.file_path == '/var/log/openbao/audit.json'
+            quiet: true
+
+        - name: "OPENBAO | Revoke the test session"
+          ansible.builtin.uri:
+            url: https://127.0.0.1:8200/v1/auth/token/revoke-self
+            ca_path: /etc/pki/molecule/openbao.crt
+            method: POST
+            headers:
+              X-Vault-Token: "{{ __openbao_test_login.json.auth.client_token }}"
+            status_code: 204
+          no_log: true
+
+        - name: "OPENBAO | Read the audit log"
+          become: true
+          become_user: root
+          ansible.builtin.slurp:
+            src: /var/log/openbao/audit.json
+          register: __openbao_test_audit_log
+          no_log: true
+
+        - name: "OPENBAO | Assert bootstrap root revocation was audited without the Secret ID"
+          ansible.builtin.assert:
+            that:
+              - >-
+                __openbao_test_audit_log.content | b64decode | split('\n') | reject('equalto', '')
+                | map('from_json') | selectattr('type', 'equalto', 'request')
+                | selectattr('request.path', 'equalto', 'auth/token/revoke-self')
+                | selectattr('auth.policies', 'defined')
+                | selectattr('auth.policies', 'contains', 'root') | list | length == 1
+              - openbao_bootstrap_secret_id not in (__openbao_test_audit_log.content | b64decode)
+            quiet: true
+          no_log: true

@@ -89,3 +89,48 @@ argument_specs:
           - error
         description:
           - Server log level.
+      openbao_bootstrap_enabled:
+        type: bool
+        default: false
+        description:
+          - Initialize empty storage with the reserved ansible management AppRole and revoke
+            the initial root token.
+      openbao_bootstrap_role_id:
+        type: str
+        description:
+          - Required management Role ID when bootstrap is enabled; unchanged on already
+            initialized storage.
+      openbao_bootstrap_secret_id:
+        type: str
+        no_log: true
+        description:
+          - Required random management Secret ID of at least 32 characters, supplied from
+            Ansible Vault when bootstrap is enabled.
+          - Registered only during self-initialization; later changes require the openbao_config
+            secret_id entry point.
+      openbao_api_ca_file:
+        type: path
+        description:
+          - CA bundle on the target for bootstrap verification; omitted to use the system
+            trust store.
+      openbao_audit_devices:
+        type: list
+        elements: dict
+        default: []
+        description:
+          - Declarative file audit devices; removal of an entry disables the device on restart.
+          - Existing devices cannot be modified in place; create a replacement at a new
+            audit path first.
+        options:
+          path:
+            type: str
+            required: true
+            description:
+              - Unique audit mount path using lowercase letters, digits, underscores and
+                hyphens.
+          file_path:
+            type: path
+            required: true
+            description:
+              - Absolute audit log filename in a dedicated directory managed for the OpenBao
+                service account.

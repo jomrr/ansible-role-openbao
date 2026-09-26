@@ -24,3 +24,88 @@ seal "static" {
   current_key_id = {{ openbao_seal_key_id | to_json }}
   current_key    = {{ ('file://' ~ __openbao_seal_key_runtime_file) | to_json }}
 }
+{% for device in openbao_audit_devices %}
+
+audit "file" {{ device.path | to_json }} {
+  options {
+    file_path = {{ device.file_path | to_json }}
+    mode      = "0600"
+    log_raw   = "false"
+  }
+}
+{% endfor %}
+{% if openbao_bootstrap_enabled %}
+
+# These requests run only against uninitialized storage.
+initialize "ansible" {
+  request "management-policy" {
+    operation = "update"
+    path      = "sys/policies/acl/ansible-admin"
+    data = {
+      policy = <<-POLICY
+        path "sys/policies/acl/*" {
+          capabilities = ["create", "read", "update", "delete", "list"]
+        }
+        path "sys/auth" {
+          capabilities = ["read"]
+        }
+        path "sys/auth/*" {
+          capabilities = ["create", "read", "update", "delete", "sudo"]
+        }
+        path "sys/mounts" {
+          capabilities = ["read"]
+        }
+        path "sys/mounts/*" {
+          capabilities = ["create", "read", "update", "delete", "sudo"]
+        }
+        path "auth/*" {
+          capabilities = ["create", "read", "update", "delete", "list"]
+        }
+        path "sys/rotate/recovery/*" {
+          capabilities = ["create", "read", "update", "delete", "sudo"]
+        }
+        path "sys/audit" {
+          capabilities = ["read", "sudo"]
+        }
+      POLICY
+    }
+  }
+  request "management-auth" {
+    operation = "update"
+    path      = "sys/auth/ansible"
+    data = { type = "approle" }
+  }
+  request "management-role" {
+    operation = "update"
+    path      = "auth/ansible/role/ansible-admin"
+    data = {
+      token_policies     = ["ansible-admin"]
+      token_ttl          = 900
+      token_max_ttl      = 3600
+      bind_secret_id     = true
+      secret_id_ttl      = 0
+      secret_id_num_uses = 0
+    }
+  }
+  request "management-role-id" {
+    operation = "update"
+    path      = "auth/ansible/role/ansible-admin/role-id"
+    data = { role_id = {{ openbao_bootstrap_role_id | to_json }} }
+  }
+  request "management-secret-id" {
+    operation = "update"
+    path      = "auth/ansible/role/ansible-admin/custom-secret-id"
+    data = {
+      secret_id = {
+        eval_type   = "string"
+        eval_source = "file"
+        path        = {{ __openbao_bootstrap_runtime_file | to_json }}
+      }
+    }
+  }
+  request "revoke-root-token" {
+    operation = "update"
+    path      = "auth/token/revoke-self"
+  }
+}
+{% endif %}

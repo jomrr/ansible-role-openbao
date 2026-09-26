@@ -94,6 +94,24 @@
     group: root
     mode: "0755"
 
+- name: OPENBAO | Prepare bootstrap credential
+  ansible.builtin.import_tasks: bootstrap_credential.yml
+  when: openbao_bootstrap_enabled
+
+- name: OPENBAO | Create audit log directories
+  become: true
+  become_user: root
+  ansible.builtin.file:
+    path: "{{ __openbao_audit.file_path | dirname }}"
+    state: directory
+    owner: "{{ __openbao_user }}"
+    group: "{{ __openbao_group }}"
+    mode: "0750"
+  loop: "{{ openbao_audit_devices }}"
+  loop_control:
+    loop_var: __openbao_audit
+    label: "{{ __openbao_audit.path }}"
+
 - name: OPENBAO | Load the seal key credential into the service
   become: true
   become_user: root
@@ -129,3 +147,9 @@
     name: "{{ __openbao_service_name }}"
     enabled: true
     state: started
+
+- name: OPENBAO | Verify the bootstrapped service
+  ansible.builtin.import_tasks: bootstrap_verify.yml
+  when:
+    - openbao_bootstrap_enabled
+    - not ansible_check_mode

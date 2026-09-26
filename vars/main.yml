@@ -28,3 +28,11 @@ __openbao_seal_key_runtime_file: "/run/credentials/{{ __openbao_service_name }}/
 
 # Cluster listener of the single raft node, bound to loopback
 __openbao_cluster_address: 127.0.0.1:8201
+
+# Bootstrap credentials are separate from the permanent storage seal key.
+__openbao_bootstrap_credential_name: openbao-bootstrap-secret-id
+__openbao_bootstrap_credential_files:
+  host: /etc/credstore.encrypted/openbao-bootstrap-secret-id.host.cred
+  host+tpm2: /etc/credstore.encrypted/openbao-bootstrap-secret-id.host-tpm2.cred
+__openbao_bootstrap_credential_file: "{{ __openbao_bootstrap_credential_files[openbao_seal_credential_key] }}"
+__openbao_bootstrap_runtime_file: "/run/credentials/{{ __openbao_service_name }}/{{ __openbao_bootstrap_credential_name }}"

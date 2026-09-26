@@ -8,3 +8,42 @@
       - openbao_seal_key is match('^([0-9a-fA-F]{64}|[A-Za-z0-9+/]{43}=)$')
     fail_msg: openbao_seal_key must be a 32-byte key encoded as 64 hexadecimal or 44 base64 characters.
     quiet: true
+
+- name: OPENBAO | Validate bootstrap prerequisites
+  ansible.builtin.assert:
+    that:
+      - openbao_bootstrap_role_id is defined
+      - openbao_bootstrap_secret_id is defined
+      - openbao_log_level != 'trace'
+      - openbao_api_addr is match('^https://')
+    fail_msg: Bootstrap requires a Role ID, a Secret ID, HTTPS and a log level other than trace.
+    quiet: true
+  when: openbao_bootstrap_enabled
+
+- name: OPENBAO | Validate bootstrap credentials
+  ansible.builtin.assert:
+    that:
+      - openbao_bootstrap_role_id | length > 0
+      - openbao_bootstrap_secret_id | length >= 32
+    quiet: true
+  no_log: true
+  when: openbao_bootstrap_enabled
+
+- name: OPENBAO | Validate audit paths
+  ansible.builtin.assert:
+    that:
+      - __openbao_audit.path is match('^[a-z][a-z0-9_-]*$')
+      - __openbao_audit.file_path is match('^/[^\\s]+$')
+      - __openbao_audit.file_path | dirname != '/'
+    quiet: true
+  loop: "{{ openbao_audit_devices }}"
+  loop_control:
+    loop_var: __openbao_audit
+    label: "{{ __openbao_audit.path }}"
+
+- name: OPENBAO | Validate unique audit devices and destinations
+  ansible.builtin.assert:
+    that:
+      - openbao_audit_devices | map(attribute='path') | unique | length == openbao_audit_devices | length
+      - openbao_audit_devices | map(attribute='file_path') | unique | length == openbao_audit_devices | length
+    quiet: true

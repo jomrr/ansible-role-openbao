@@ -39,3 +39,23 @@ openbao_ui: true
 # Server log level.
 # Choices: trace, debug, info, warn, error
 openbao_log_level: info
+
+# Initialize an empty server with a dedicated Ansible management AppRole.
+openbao_bootstrap_enabled: false
+
+# Stable identifier of the management AppRole, supplied when bootstrap is enabled.
+# openbao_bootstrap_role_id:
+
+# Random management Secret ID supplied from Ansible Vault when bootstrap is enabled.
+# openbao_bootstrap_secret_id:
+# Example: openbao_bootstrap_secret_id: "{{ vault_openbao_management_secret_id }}"
+
+# CA bundle on the target for bootstrap API checks; the system trust store is used when omitted.
+# openbao_api_ca_file:
+
+# Declarative file audit devices, identified by their API mount path.
+openbao_audit_devices: []
+# Example:
+# openbao_audit_devices:
+#   - path: file
+#     file_path: /var/log/openbao/audit.json

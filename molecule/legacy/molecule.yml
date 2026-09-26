@@ -1,6 +1,6 @@
 ---
 # role: openbao
-# file: molecule/dev/molecule.yml
+# file: molecule/legacy/molecule.yml
 
 dependency:
   name: "galaxy"
@@ -16,12 +16,9 @@ provisioner:
       forks: 8
       interpreter_python: "auto_silent"
       allow_world_readable_tmpfiles: true
-      callbacks_enabled: "ansible.builtin.default"
+      callbacks_enabled: "ansible.posix.profile_tasks,ansible.posix.timer"
       callback_result_format: "yaml"
       remote_tmp: "/tmp/.ansible/tmp"
-      display_ok_hosts: false
-      display_skipped_hosts: false
-      show_task_path_on_failure: true
     ssh_connection:
       pipelining: true
   log: true
@@ -39,7 +36,7 @@ provisioner:
         openbao_tls_key_file: "/etc/pki/molecule/openbao.key"
         openbao_api_addr: "https://127.0.0.1:8200"
         openbao_api_ca_file: "/etc/pki/molecule/openbao.crt"
-        openbao_bootstrap_enabled: true
+        openbao_bootstrap_enabled: false
         openbao_bootstrap_role_id: "molecule-controller"
         openbao_bootstrap_secret_id: "molecule-management-secret-id-not-for-production"
         openbao_audit_devices:
@@ -62,28 +59,10 @@ scenario:
     - "idempotence"
     - "verify"
     - "destroy"
-  name: "dev"
+  name: "legacy"
 platforms:
-  - name: "almalinux-latest-openbao"
-    image: "docker.io/jomrr/molecule-almalinux:latest"
-    pre_build_image: true
-    override_command: false
-    systemd: "true"
-    capabilities:
-      - "SYS_ADMIN"
-    security_opts:
-      - "label=disable"
-  - name: "fedora-latest-openbao"
-    image: "docker.io/jomrr/molecule-fedora:latest"
-    pre_build_image: true
-    override_command: false
-    systemd: "true"
-    capabilities:
-      - "SYS_ADMIN"
-    security_opts:
-      - "label=disable"
-  - name: "opensuse-tumbleweed-latest-openbao"
-    image: "docker.io/jomrr/molecule-opensuse-tumbleweed:latest"
+  - name: "openbao-legacy"
+    image: "docker.io/${uns:-jomrr}/molecule-${img:-fedora}:${tag:-latest}"
     pre_build_image: true
     override_command: false
     systemd: "true"

@@ -34,6 +34,14 @@ provisioner:
         openbao_seal_credential_key: "host"
         openbao_tls_cert_file: "/etc/pki/molecule/openbao.crt"
         openbao_tls_key_file: "/etc/pki/molecule/openbao.key"
+        openbao_api_addr: "https://127.0.0.1:8200"
+        openbao_api_ca_file: "/etc/pki/molecule/openbao.crt"
+        openbao_bootstrap_enabled: true
+        openbao_bootstrap_role_id: "molecule-controller"
+        openbao_bootstrap_secret_id: "molecule-management-secret-id-not-for-production"
+        openbao_audit_devices:
+          - path: "file"
+            file_path: "/var/log/openbao/audit.json"
 verifier:
   name: "ansible"
 scenario:
