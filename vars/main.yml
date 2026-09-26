@@ -69,6 +69,3 @@ __openbao_bootstrap_policy: |-
   path "+/metadata/*" {
     capabilities = ["create", "read", "update", "delete", "list"]
   }
-  path "sys/storage/raft/snapshot" {
-    capabilities = ["read"]
-  }

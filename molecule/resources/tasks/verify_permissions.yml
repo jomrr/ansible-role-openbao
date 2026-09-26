@@ -2,7 +2,7 @@
 # role: openbao
 # file: molecule/resources/tasks/verify_permissions.yml
 
-- name: OPENBAO | Verify management KV and snapshot permissions from the controller
+- name: OPENBAO | Verify management KV access and snapshot denial from the controller
   delegate_to: localhost
   module_defaults:
     ansible.builtin.uri:
@@ -27,7 +27,7 @@
         that:
           - __openbao_test_capabilities.json.data['molecule/data/example'] | sort == ['create', 'delete', 'list', 'read', 'update']
           - __openbao_test_capabilities.json.data['molecule/metadata/example'] | sort == ['create', 'delete', 'list', 'read', 'update']
-          - __openbao_test_capabilities.json.data['sys/storage/raft/snapshot'] == ['read']
+          - __openbao_test_capabilities.json.data['sys/storage/raft/snapshot'] == ['deny']
         quiet: true
 
     - name: OPENBAO | Mount a temporary KV v2 engine
@@ -98,9 +98,8 @@
             status_code: 204
           no_log: true
 
-    - name: OPENBAO | Download a raft snapshot using management access
+    - name: OPENBAO | Reject raft snapshot access with the management token
       ansible.builtin.uri:
         url: "{{ openbao_api_addr }}/v1/sys/storage/raft/snapshot"
-        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/{{ inventory_hostname }}.snap"
-        mode: '0600'
+        status_code: 403
       no_log: true

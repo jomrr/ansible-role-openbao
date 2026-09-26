@@ -308,8 +308,9 @@ unseals itself after the restart.
 - The cluster listener of the single node is bound to 127.0.0.1.
 - Store the bootstrap Secret ID in Ansible Vault outside this OpenBao instance.
   The ansible-admin policy is highly privileged: it can manage policies,
-  authentication, mounts, recovery operations and KV v2 data and metadata, and
-  read raft snapshots. The + wildcard covers single-component mount paths.
+  authentication, mounts, recovery operations and KV v2 data and metadata. Raft
+  snapshot access requires a separate identity and policy. The + wildcard covers
+  single-component mount paths.
 - Self-initialization reads the Secret ID from a systemd credential; the server
   configuration contains only its filename. Trace logging is rejected while
   bootstrap is enabled because profile tracing exposes request data.
@@ -326,8 +327,8 @@ unseals itself after the restart.
   ansible-admin policy and AppRole, registers the supplied Role ID and Secret
   ID, and explicitly revokes the initial root token. The role verifies
   initialization and the management login; no root token is exported. Recovery
-  keys are generated separately using jomrr.openbao_config with
-  tasks_from=recovery before the instance is relied upon for production.
+  keys are generated outside these roles through the authenticated OpenBao
+  recovery workflow before the instance is relied upon for production.
 - Self-initialization runs only on empty storage. Existing installations require
   a working administrator to establish the management AppRole before enabling
   bootstrap verification. Failed partial initialization does not replay on
