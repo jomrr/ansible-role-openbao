@@ -58,7 +58,7 @@ argument_specs:
         required: false
         default: https://{{ ansible_facts.fqdn }}:8200
         description:
-          - API address advertised to clients.
+          - API address advertised to clients and reachable from the controller for bootstrap.
       openbao_raft_path:
         type: path
         required: false
@@ -95,6 +95,8 @@ argument_specs:
         description:
           - Initialize empty storage with the reserved ansible management AppRole and revoke
             the initial root token.
+          - Reconcile the reserved management policy and CIDR bindings from the controller
+            on subsequent runs.
       openbao_bootstrap_role_id:
         type: str
         description:
@@ -108,10 +110,19 @@ argument_specs:
             Ansible Vault when bootstrap is enabled.
           - Registered only during self-initialization; later changes require the openbao_config
             secret_id entry point.
-      openbao_api_ca_file:
+      openbao_bootstrap_bound_cidrs:
+        type: list
+        elements: str
+        default: []
+        description:
+          - Networks allowed to log in and use management tokens; an empty list leaves access
+            unbound.
+          - Applied during self-initialization and reconciled on existing management AppRoles
+            with rollback on failed verification.
+      openbao_controller_ca_file:
         type: path
         description:
-          - CA bundle on the target for bootstrap verification; omitted to use the system
+          - CA bundle on the controller for bootstrap API calls; omitted to use the controller
             trust store.
       openbao_audit_devices:
         type: list

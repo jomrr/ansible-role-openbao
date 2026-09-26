@@ -1,0 +1,87 @@
+---
+# role: openbao
+# file: tasks/bootstrap_cidrs.yml
+
+- name: OPENBAO | Apply and verify management CIDR bindings
+  block:
+    - name: OPENBAO | Write management CIDR bindings
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+        method: POST
+        body:
+          secret_id_bound_cidrs: "{{ openbao_bootstrap_bound_cidrs }}"
+          token_bound_cidrs: "{{ openbao_bootstrap_bound_cidrs }}"
+        status_code: 204
+      changed_when: true
+      no_log: true
+
+    - name: OPENBAO | Verify access with a newly issued token
+      block:
+        - name: OPENBAO | Log in with the updated CIDR bindings
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/ansible/login"
+            method: POST
+            body:
+              role_id: "{{ openbao_bootstrap_role_id }}"
+              secret_id: "{{ openbao_bootstrap_secret_id }}"
+          register: __openbao_bootstrap_probe
+          no_log: true
+
+        - name: OPENBAO | Verify the new token can read the management AppRole
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+            headers:
+              X-Vault-Token: "{{ __openbao_bootstrap_probe.json.auth.client_token }}"
+          no_log: true
+      always:
+        - name: OPENBAO | Revoke the probe token using the retained management session
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/token/revoke-accessor"
+            method: POST
+            body:
+              accessor: "{{ __openbao_bootstrap_probe.json.auth.accessor }}"
+            status_code: 204
+          when: __openbao_bootstrap_probe.json.auth.accessor is defined
+          no_log: true
+  rescue:
+    - name: OPENBAO | Restore the previous CIDR bindings after a failed update
+      block:
+        - name: OPENBAO | Write the previous management CIDR bindings
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+            method: POST
+            body:
+              secret_id_bound_cidrs: "{{ __openbao_bootstrap_role_read.json.data.secret_id_bound_cidrs | default([], true) }}"
+              token_bound_cidrs: "{{ __openbao_bootstrap_role_read.json.data.token_bound_cidrs | default([], true) }}"
+            status_code: 204
+          changed_when: true
+          no_log: true
+
+        - name: OPENBAO | Read the restored management CIDR bindings
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+          register: __openbao_bootstrap_rollback
+          no_log: true
+
+        - name: OPENBAO | Confirm both previous CIDR bindings were restored
+          ansible.builtin.assert:
+            that:
+              - >-
+                __openbao_bootstrap_rollback.json.data.secret_id_bound_cidrs | default([], true) | sort
+                == __openbao_bootstrap_role_read.json.data.secret_id_bound_cidrs | default([], true) | sort
+              - >-
+                __openbao_bootstrap_rollback.json.data.token_bound_cidrs | default([], true) | sort
+                == __openbao_bootstrap_role_read.json.data.token_bound_cidrs | default([], true) | sort
+            quiet: true
+          no_log: true
+      rescue:
+        - name: OPENBAO | Report an unconfirmed CIDR rollback
+          ansible.builtin.fail:
+            msg: >-
+              CIDR update failed and restoration of the previous bindings could not be confirmed
+              (HTTP status {{ ansible_failed_result.status | default('unavailable') }}).
+              Check API connectivity and restore management access using an existing administrator.
+
+    - name: OPENBAO | Report the rejected CIDR update
+      ansible.builtin.fail:
+        msg: CIDR update failed verification; previous bindings were restored. Correct openbao_bootstrap_bound_cidrs before retrying.

@@ -33,6 +33,8 @@ separate openbao_config role.
 - OpenBao service enablement and runtime state
 - Optional self-initialization with a reserved Ansible management AppRole and
   explicit root-token revocation
+- Controller reconciliation of the reserved management policy and CIDR bindings
+  with rollback on failed verification
 - Declarative file audit devices and their dedicated log directories
 
 ### Not Managed
@@ -129,7 +131,8 @@ openbao_listener_address: 0.0.0.0:8200
 
 Type: `str`. Required: `false`.
 
-API address advertised to clients.
+API address advertised to clients and reachable from the controller for
+bootstrap.
 
 Default:
 
@@ -191,6 +194,8 @@ Type: `bool`. Required: `false`.
 
 Initialize empty storage with the reserved ansible management AppRole and revoke
 the initial root token.
+Reconcile the reserved management policy and CIDR bindings from the controller
+on subsequent runs.
 
 Default:
 
@@ -214,12 +219,27 @@ Ansible Vault when bootstrap is enabled.
 Registered only during self-initialization; later changes require the
 openbao_config secret_id entry point.
 
-### `openbao_api_ca_file`
+### `openbao_bootstrap_bound_cidrs`
+
+Type: `list`. Required: `false`.
+
+Networks allowed to log in and use management tokens; an empty list leaves
+access unbound.
+Applied during self-initialization and reconciled on existing management
+AppRoles with rollback on failed verification.
+
+Default:
+
+```yaml
+openbao_bootstrap_bound_cidrs: []
+```
+
+### `openbao_controller_ca_file`
 
 Type: `path`. Required: `false`.
 
-CA bundle on the target for bootstrap verification; omitted to use the system
-trust store.
+CA bundle on the controller for bootstrap API calls; omitted to use the
+controller trust store.
 
 ### `openbao_audit_devices`
 
@@ -258,6 +278,7 @@ Check mode requires a host on which the role has run before; on a fresh host the
 package, service account and seal key credential do not exist yet.
 
 - Encrypting the seal key with systemd-creds is not simulated in check mode.
+- Bootstrap API verification and reconciliation are skipped in check mode.
 
 ## Service Behavior
 
@@ -278,13 +299,17 @@ unseals itself after the restart.
   host secret and, with host+tpm2, the TPM2. systemd provides the decrypted key
   only in the credential directory of the running service.
 - The role passes the seal key to systemd-creds on standard input; it does not
-  appear in process arguments or task output.
+  appear in process arguments or task output. Both credential encryption tasks
+  use task-local pipelining and are skipped before module execution when the
+  encrypted file already exists. Pipelining requires connection-plugin support
+  and ANSIBLE_KEEP_REMOTE_FILES must remain disabled.
 - The TPM2 binding uses no PCR policy, so firmware and Secure Boot updates do
   not invalidate the credential.
 - The cluster listener of the single node is bound to 127.0.0.1.
 - Store the bootstrap Secret ID in Ansible Vault outside this OpenBao instance.
   The ansible-admin policy is highly privileged: it can manage policies,
-  authentication, mounts and recovery operations.
+  authentication, mounts, recovery operations and KV v2 data and metadata, and
+  read raft snapshots. The + wildcard covers single-component mount paths.
 - Self-initialization reads the Secret ID from a systemd credential; the server
   configuration contains only its filename. Trace logging is rejected while
   bootstrap is enabled because profile tracing exposes request data.
@@ -309,12 +334,29 @@ unseals itself after the restart.
   restart: repair it with an existing administrator or recovery access. A fresh
   instance without any working access requires deliberate operator-led
   reinitialization; this role never removes raft storage.
-- Changing bootstrap variables does not change an existing AppRole. Use the
+- Role ID and Secret ID are registered only during self-initialization. Use the
   openbao_config secret_id entry point to register a new Secret ID, update
   Ansible Vault, then revoke the old Secret ID in a separate invocation. The
   encrypted bootstrap credential is created only when missing; remove it
   explicitly when reseeding it for a future reinitialization. Keep the Role ID
   stable.
+- With bootstrap enabled, each normal run reconciles ansible-admin and both
+  management CIDR bindings from the controller. Other AppRole settings are
+  preserved. openbao_bootstrap_bound_cidrs defaults to [] (unbound); configure
+  trusted admin and VPN subnets that include the controller address as observed
+  by OpenBao after NAT.
+- CIDR updates retain the existing session while a fresh login and authenticated
+  read verify the new bindings. If writing or verification fails, the role
+  restores and reads back both previous bindings, then fails with a clear
+  message. A failed rollback is reported separately. First initialization has no
+  previous session; incorrect initial CIDRs require another administrator or
+  recovery access. Correct rejected inventory values before retrying; the
+  generated initialize block is used only on empty storage.
+- Bootstrap API calls run on localhost. Rename openbao_api_ca_file to
+  openbao_controller_ca_file and provide that CA file on the controller; without
+  it, the controller trust store is used. openbao_api_addr must be reachable
+  from the controller and covered by the server certificate. TLS verification
+  remains enabled.
 - Audit paths are single lowercase mount components. Use a dedicated parent
   directory for each configured file_path. Existing audit devices cannot be
   modified in place: enable a replacement at a new audit path, verify it, then
@@ -349,8 +391,8 @@ unseals itself after the restart.
 ### Self-initialization and file audit
 
 Provision a management AppRole from Ansible Vault and retain the static seal
-separately. The API CA file is on the target; openbao_config uses its own
-controller-side CA file.
+separately. Both roles use CA files on the controller. Replace the example
+networks with the actual admin and VPN subnets seen by OpenBao.
 
 ```yaml
 ---
@@ -363,8 +405,9 @@ controller-side CA file.
         openbao_seal_key: "{{ vault_openbao_seal_key }}"
         openbao_tls_cert_file: /etc/pki/tls/certs/openbao.crt
         openbao_tls_key_file: /etc/pki/tls/private/openbao.key
-        openbao_api_ca_file: /etc/pki/ca-trust/source/anchors/internal-ca.pem
+        openbao_controller_ca_file: /etc/pki/ca-trust/source/anchors/internal-ca.pem
         openbao_bootstrap_enabled: true
+        openbao_bootstrap_bound_cidrs: [192.0.2.0/24, 198.51.100.0/24]
         openbao_bootstrap_role_id: ansible-controller
         openbao_bootstrap_secret_id: >-
           {{ vault_openbao_management_secret_id }}

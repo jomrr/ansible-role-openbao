@@ -36,3 +36,39 @@ __openbao_bootstrap_credential_files:
   host+tpm2: /etc/credstore.encrypted/openbao-bootstrap-secret-id.host-tpm2.cred
 __openbao_bootstrap_credential_file: "{{ __openbao_bootstrap_credential_files[openbao_seal_credential_key] }}"
 __openbao_bootstrap_runtime_file: "/run/credentials/{{ __openbao_service_name }}/{{ __openbao_bootstrap_credential_name }}"
+
+# Reserved management policy shared by native initialization and controller reconciliation.
+__openbao_bootstrap_policy: |-
+  path "sys/policies/acl/*" {
+    capabilities = ["create", "read", "update", "delete", "list"]
+  }
+  path "sys/auth" {
+    capabilities = ["read"]
+  }
+  path "sys/auth/*" {
+    capabilities = ["create", "read", "update", "delete", "sudo"]
+  }
+  path "sys/mounts" {
+    capabilities = ["read"]
+  }
+  path "sys/mounts/*" {
+    capabilities = ["create", "read", "update", "delete", "sudo"]
+  }
+  path "auth/*" {
+    capabilities = ["create", "read", "update", "delete", "list"]
+  }
+  path "sys/rotate/recovery/*" {
+    capabilities = ["create", "read", "update", "delete", "sudo"]
+  }
+  path "sys/audit" {
+    capabilities = ["read", "sudo"]
+  }
+  path "+/data/*" {
+    capabilities = ["create", "read", "update", "delete", "list"]
+  }
+  path "+/metadata/*" {
+    capabilities = ["create", "read", "update", "delete", "list"]
+  }
+  path "sys/storage/raft/snapshot" {
+    capabilities = ["read"]
+  }

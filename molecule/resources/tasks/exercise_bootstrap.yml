@@ -1,0 +1,227 @@
+---
+# role: openbao
+# file: molecule/resources/tasks/exercise_bootstrap.yml
+
+- name: OPENBAO | Observe a controller login before restricting its networks
+  delegate_to: localhost
+  ansible.builtin.uri:
+    url: "{{ openbao_api_addr }}/v1/auth/ansible/login"
+    ca_path: "{{ openbao_controller_ca_file }}"
+    use_netrc: false
+    method: POST
+    body_format: json
+    body:
+      role_id: "{{ openbao_bootstrap_role_id }}"
+      secret_id: "{{ openbao_bootstrap_secret_id }}"
+  register: __openbao_test_cidr_login
+  no_log: true
+
+- name: OPENBAO | Exercise CIDR reconciliation with a retained test session
+  module_defaults:
+    ansible.builtin.uri:
+      ca_path: "{{ openbao_controller_ca_file }}"
+      use_netrc: false
+      follow_redirects: none
+      body_format: json
+      headers:
+        X-Vault-Token: "{{ __openbao_test_cidr_login.json.auth.client_token }}"
+  block:
+    - name: OPENBAO | Read the observed login from the server audit log
+      become: true
+      become_user: root
+      ansible.builtin.slurp:
+        src: /var/log/openbao/audit.json
+      register: __openbao_test_cidr_audit
+      no_log: true
+
+    - name: OPENBAO | Identify the source address of this exact controller request
+      vars:
+        __openbao_test_login_requests: >-
+          {{ (__openbao_test_cidr_audit.content | b64decode).splitlines() | reject('equalto', '')
+          | map('from_json') | selectattr('type', 'equalto', 'request')
+          | selectattr('request.id', 'equalto', __openbao_test_cidr_login.json.request_id) | list }}
+      block:
+        - name: OPENBAO | Require one matching login with an observed source address
+          ansible.builtin.assert:
+            that:
+              - __openbao_test_login_requests | length == 1
+              - __openbao_test_login_requests[0].request.path == 'auth/ansible/login'
+              - __openbao_test_login_requests[0].request.remote_address | length > 0
+            quiet: true
+          no_log: true
+
+        # These fixture values survive the role invocations below; they are derived from the server, not the port mapping.
+        - name: OPENBAO | Retain the observed controller address for allowed and denied fixtures
+          ansible.builtin.set_fact:
+            __openbao_test_controller_ip: "{{ __openbao_test_login_requests[0].request.remote_address }}"
+            __openbao_test_allowed_cidrs:
+              - >-
+                {{ __openbao_test_login_requests[0].request.remote_address
+                ~ ('/128' if ':' in __openbao_test_login_requests[0].request.remote_address else '/32') }}
+          no_log: true
+
+    - name: OPENBAO | Apply the observed controller CIDR through the server role
+      ansible.builtin.include_role:
+        name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+      vars:
+        openbao_bootstrap_bound_cidrs: "{{ __openbao_test_allowed_cidrs }}"
+
+    - name: OPENBAO | Read audit requests before repeating the allowed binding
+      become: true
+      become_user: root
+      ansible.builtin.slurp:
+        src: /var/log/openbao/audit.json
+      register: __openbao_test_before_repeat
+      no_log: true
+
+    - name: OPENBAO | Repeat the same allowed binding through the server role
+      ansible.builtin.include_role:
+        name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+      vars:
+        openbao_bootstrap_bound_cidrs: "{{ __openbao_test_allowed_cidrs }}"
+
+    - name: OPENBAO | Read audit requests after repeating the allowed binding
+      become: true
+      become_user: root
+      ansible.builtin.slurp:
+        src: /var/log/openbao/audit.json
+      register: __openbao_test_after_repeat
+      no_log: true
+
+    - name: OPENBAO | Assert identical bindings caused no AppRole write
+      ansible.builtin.assert:
+        that:
+          - >-
+            ((__openbao_test_before_repeat.content | b64decode).splitlines() | reject('equalto', '') | map('from_json')
+            | selectattr('type', 'equalto', 'request') | selectattr('request.operation', 'equalto', 'update')
+            | selectattr('request.path', 'equalto', 'auth/ansible/role/ansible-admin') | list | length)
+            == ((__openbao_test_after_repeat.content | b64decode).splitlines() | reject('equalto', '') | map('from_json')
+            | selectattr('type', 'equalto', 'request') | selectattr('request.operation', 'equalto', 'update')
+            | selectattr('request.path', 'equalto', 'auth/ansible/role/ansible-admin') | list | length)
+        quiet: true
+      no_log: true
+
+    - name: OPENBAO | Read the allowed bindings before attempting a lockout
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+      register: __openbao_test_allowed_role
+      no_log: true
+
+    - name: OPENBAO | Exercise the role failure and rollback for a controller-excluding CIDR
+      vars:
+        __openbao_test_denied_ip: "{{ '192.0.2.1' if __openbao_test_controller_ip != '192.0.2.1' else '192.0.2.2' }}"
+      block:
+        - name: OPENBAO | Confirm the negative fixture excludes the observed source
+          ansible.builtin.assert:
+            that: __openbao_test_denied_ip != __openbao_test_controller_ip
+            quiet: true
+
+        - name: OPENBAO | Apply a controller-excluding binding through the server role
+          ansible.builtin.include_role:
+            name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+          vars:
+            openbao_bootstrap_bound_cidrs: ["{{ __openbao_test_denied_ip }}/32"]
+
+        - name: OPENBAO | Reject an unexpectedly successful lockout attempt
+          ansible.builtin.fail:
+            msg: The controller-excluding CIDR update unexpectedly succeeded.
+      rescue:
+        - name: OPENBAO | Require the specific confirmed rollback failure
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.msg ==
+                'CIDR update failed verification; previous bindings were restored. Correct openbao_bootstrap_bound_cidrs before retrying.'
+            quiet: true
+
+    - name: OPENBAO | Read both bindings after the rejected update
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+      register: __openbao_test_restored_role
+      no_log: true
+
+    - name: OPENBAO | Assert both previously allowed bindings were restored
+      ansible.builtin.assert:
+        that:
+          - >-
+            __openbao_test_restored_role.json.data.secret_id_bound_cidrs
+            == __openbao_test_allowed_role.json.data.secret_id_bound_cidrs
+          - >-
+            __openbao_test_restored_role.json.data.token_bound_cidrs
+            == __openbao_test_allowed_role.json.data.token_bound_cidrs
+        quiet: true
+      no_log: true
+
+    - name: OPENBAO | Log in again after rollback
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/auth/ansible/login"
+        method: POST
+        body:
+          role_id: "{{ openbao_bootstrap_role_id }}"
+          secret_id: "{{ openbao_bootstrap_secret_id }}"
+      register: __openbao_test_restored_login
+      no_log: true
+
+    - name: OPENBAO | Verify and close the restored login
+      block:
+        - name: OPENBAO | Read the management policy with the fresh token
+          delegate_to: localhost
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/sys/policies/acl/ansible-admin"
+            headers:
+              X-Vault-Token: "{{ __openbao_test_restored_login.json.auth.client_token }}"
+          no_log: true
+      always:
+        - name: OPENBAO | Revoke the restored login by accessor
+          delegate_to: localhost
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/token/revoke-accessor"
+            method: POST
+            body:
+              accessor: "{{ __openbao_test_restored_login.json.auth.accessor }}"
+            status_code: 204
+          no_log: true
+
+    - name: OPENBAO | Remove the CIDR bindings through the server role
+      ansible.builtin.include_role:
+        name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+      vars:
+        openbao_bootstrap_bound_cidrs: []
+
+    - name: OPENBAO | Read the unbound management AppRole
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+      register: __openbao_test_unbound_role
+      no_log: true
+
+    - name: OPENBAO | Assert an empty list removed both bindings
+      ansible.builtin.assert:
+        that:
+          - not (__openbao_test_unbound_role.json.data.secret_id_bound_cidrs | default([], true))
+          - not (__openbao_test_unbound_role.json.data.token_bound_cidrs | default([], true))
+        quiet: true
+      no_log: true
+
+    - name: OPENBAO | Simulate an older policy while retaining management access
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/sys/policies/acl/ansible-admin"
+        method: POST
+        body:
+          policy: |-
+            path "sys/policies/acl/*" { capabilities = ["create", "read", "update", "delete", "list"] }
+            path "auth/*" { capabilities = ["create", "read", "update", "delete", "list"] }
+        status_code: 204
+      no_log: true
+  always:
+    - name: OPENBAO | Revoke the retained CIDR test session
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/auth/token/revoke-self"
+        method: POST
+        status_code: 204
+      no_log: true

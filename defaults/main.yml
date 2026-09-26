@@ -24,7 +24,7 @@ openbao_seal_credential_key: host+tpm2
 # Address and port of the TLS API listener.
 openbao_listener_address: 0.0.0.0:8200
 
-# API address advertised to clients.
+# API address advertised to clients and reachable from the controller for bootstrap.
 openbao_api_addr: "https://{{ ansible_facts.fqdn }}:8200"
 
 # Directory of the integrated raft storage.
@@ -40,7 +40,7 @@ openbao_ui: true
 # Choices: trace, debug, info, warn, error
 openbao_log_level: info
 
-# Initialize an empty server with a dedicated Ansible management AppRole.
+# Initialize empty storage and reconcile the reserved management policy and CIDR bindings.
 openbao_bootstrap_enabled: false
 
 # Stable identifier of the management AppRole, supplied when bootstrap is enabled.
@@ -50,8 +50,11 @@ openbao_bootstrap_enabled: false
 # openbao_bootstrap_secret_id:
 # Example: openbao_bootstrap_secret_id: "{{ vault_openbao_management_secret_id }}"
 
-# CA bundle on the target for bootstrap API checks; the system trust store is used when omitted.
-# openbao_api_ca_file:
+# Networks allowed to log in and use management tokens; an empty list leaves access unbound.
+openbao_bootstrap_bound_cidrs: []
+
+# CA bundle on the controller for bootstrap API calls; the controller trust store is used when omitted.
+# openbao_controller_ca_file:
 
 # Declarative file audit devices, identified by their API mount path.
 openbao_audit_devices: []

@@ -2,39 +2,78 @@
 # role: openbao
 # file: tasks/bootstrap_verify.yml
 
-- name: OPENBAO | Wait for initialization and automatic unsealing
-  ansible.builtin.uri:
-    url: "{{ openbao_api_addr }}/v1/sys/health"
-    ca_path: "{{ openbao_api_ca_file | default(omit) }}"
-    use_netrc: false
-    follow_redirects: none
-  register: __openbao_bootstrap_health
-  until: __openbao_bootstrap_health.status == 200
-  retries: 20
-  delay: 3
+- name: OPENBAO | Reconcile bootstrap access from the controller
+  delegate_to: localhost
+  module_defaults:
+    ansible.builtin.uri: &openbao_bootstrap_http
+      ca_path: "{{ openbao_controller_ca_file | default(omit) }}"
+      validate_certs: true
+      use_netrc: false
+      follow_redirects: none
+      unredirected_headers: [X-Vault-Token]
+      body_format: json
+  block:
+    - name: OPENBAO | Wait for initialization and automatic unsealing
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/sys/health"
+      register: __openbao_bootstrap_health
+      until: __openbao_bootstrap_health.status == 200
+      retries: 20
+      delay: 3
 
-- name: OPENBAO | Verify the management AppRole
-  ansible.builtin.uri:
-    url: "{{ openbao_api_addr }}/v1/auth/ansible/login"
-    ca_path: "{{ openbao_api_ca_file | default(omit) }}"
-    use_netrc: false
-    follow_redirects: none
-    method: POST
-    body_format: json
-    body:
-      role_id: "{{ openbao_bootstrap_role_id }}"
-      secret_id: "{{ openbao_bootstrap_secret_id }}"
-  register: __openbao_bootstrap_login
-  no_log: true
+    - name: OPENBAO | Open the management session
+      ansible.builtin.uri:
+        url: "{{ openbao_api_addr }}/v1/auth/ansible/login"
+        method: POST
+        body:
+          role_id: "{{ openbao_bootstrap_role_id }}"
+          secret_id: "{{ openbao_bootstrap_secret_id }}"
+      register: __openbao_bootstrap_login
+      no_log: true
 
-- name: OPENBAO | Revoke the verification token
-  ansible.builtin.uri:
-    url: "{{ openbao_api_addr }}/v1/auth/token/revoke-self"
-    ca_path: "{{ openbao_api_ca_file | default(omit) }}"
-    use_netrc: false
-    follow_redirects: none
-    method: POST
-    headers:
-      X-Vault-Token: "{{ __openbao_bootstrap_login.json.auth.client_token }}"
-    status_code: 204
-  no_log: true
+    - name: OPENBAO | Reconcile the reserved policy and CIDR bindings
+      module_defaults:
+        ansible.builtin.uri:
+          <<: *openbao_bootstrap_http
+          headers:
+            X-Vault-Token: "{{ __openbao_bootstrap_login.json.auth.client_token }}"
+      block:
+        - name: OPENBAO | Read the management policy
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/sys/policies/acl/ansible-admin"
+          register: __openbao_bootstrap_policy_read
+          no_log: true
+
+        - name: OPENBAO | Update the management policy
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/sys/policies/acl/ansible-admin"
+            method: POST
+            body:
+              policy: "{{ __openbao_bootstrap_policy }}"
+            status_code: 204
+          when: __openbao_bootstrap_policy_read.json.data.policy | trim != __openbao_bootstrap_policy | trim
+          changed_when: true
+          no_log: true
+
+        - name: OPENBAO | Read the management AppRole
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/ansible/role/ansible-admin"
+          register: __openbao_bootstrap_role_read
+          no_log: true
+
+        # The API serializes token-bound IPv4 /32 and IPv6 /128 networks as bare addresses.
+        - name: OPENBAO | Update changed management CIDR bindings
+          ansible.builtin.import_tasks: bootstrap_cidrs.yml
+          when: >-
+            __openbao_bootstrap_role_read.json.data.secret_id_bound_cidrs | default([], true) | unique | sort
+            != openbao_bootstrap_bound_cidrs | unique | sort
+            or __openbao_bootstrap_role_read.json.data.token_bound_cidrs | default([], true) | unique | sort
+            != openbao_bootstrap_bound_cidrs | map('regex_replace', '^([^:]+)/32$', '\\1')
+            | map('regex_replace', '^(.+:.*)/128$', '\\1') | unique | sort
+      always:
+        - name: OPENBAO | Revoke the management session
+          ansible.builtin.uri:
+            url: "{{ openbao_api_addr }}/v1/auth/token/revoke-self"
+            method: POST
+            status_code: 204
+          no_log: true

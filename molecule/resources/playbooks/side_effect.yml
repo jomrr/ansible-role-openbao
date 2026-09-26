@@ -4,8 +4,12 @@
 
 - name: "OPENBAO | Lose the seal key credential on an initialized server"
   hosts: all
-  gather_facts: false
+  gather_facts: true
   tasks:
+    - name: "OPENBAO | Exercise management updates and CIDR rollback"
+      ansible.builtin.include_tasks: ../tasks/exercise_bootstrap.yml
+      when: openbao_bootstrap_enabled
+
     - name: "OPENBAO | Wait for the API listener"
       ansible.builtin.wait_for:
         host: 127.0.0.1

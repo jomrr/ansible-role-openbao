@@ -34,14 +34,23 @@ provisioner:
         openbao_seal_credential_key: "host"
         openbao_tls_cert_file: "/etc/pki/molecule/openbao.crt"
         openbao_tls_key_file: "/etc/pki/molecule/openbao.key"
-        openbao_api_addr: "https://127.0.0.1:8200"
-        openbao_api_ca_file: "/etc/pki/molecule/openbao.crt"
+        __openbao_test_port: 18300
+        openbao_api_addr: "https://127.0.0.1:{{ __openbao_test_port }}"
+        openbao_controller_ca_file: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/tls/{{ inventory_hostname\
+          \ }}/openbao.crt"
         openbao_bootstrap_enabled: true
         openbao_bootstrap_role_id: "molecule-controller"
         openbao_bootstrap_secret_id: "molecule-management-secret-id-not-for-production"
         openbao_audit_devices:
           - path: "file"
             file_path: "/var/log/openbao/audit.json"
+    host_vars:
+      almalinux-latest-openbao:
+        __openbao_test_port: 18301
+      fedora-latest-openbao:
+        __openbao_test_port: 18302
+      opensuse-tumbleweed-latest-openbao:
+        __openbao_test_port: 18303
 verifier:
   name: "ansible"
 scenario:
@@ -70,3 +79,5 @@ platforms:
       - "SYS_ADMIN"
     security_opts:
       - "label=disable"
+    published_ports:
+      - "127.0.0.1:18300:8200"

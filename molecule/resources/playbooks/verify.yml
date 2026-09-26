@@ -59,21 +59,23 @@
       when: openbao_bootstrap_enabled
       block:
         - name: "OPENBAO | Authenticate using the bootstrapped AppRole"
+          delegate_to: localhost
           ansible.builtin.uri:
-            url: https://127.0.0.1:8200/v1/auth/ansible/login
+            url: "{{ openbao_api_addr }}/v1/auth/ansible/login"
             method: POST
             body_format: json
             body:
               role_id: "{{ openbao_bootstrap_role_id }}"
               secret_id: "{{ openbao_bootstrap_secret_id }}"
-            ca_path: /etc/pki/molecule/openbao.crt
+            ca_path: "{{ openbao_controller_ca_file }}"
           register: __openbao_test_login
           no_log: true
 
         - name: "OPENBAO | Read configured audit devices"
+          delegate_to: localhost
           ansible.builtin.uri:
-            url: https://127.0.0.1:8200/v1/sys/audit
-            ca_path: /etc/pki/molecule/openbao.crt
+            url: "{{ openbao_api_addr }}/v1/sys/audit"
+            ca_path: "{{ openbao_controller_ca_file }}"
             headers:
               X-Vault-Token: "{{ __openbao_test_login.json.auth.client_token }}"
           register: __openbao_test_audit
@@ -87,10 +89,14 @@
               - __openbao_test_audit.json.data['file/'].options.file_path == '/var/log/openbao/audit.json'
             quiet: true
 
+        - name: "OPENBAO | Exercise management data and snapshot permissions"
+          ansible.builtin.include_tasks: ../tasks/verify_permissions.yml
+
         - name: "OPENBAO | Revoke the test session"
+          delegate_to: localhost
           ansible.builtin.uri:
-            url: https://127.0.0.1:8200/v1/auth/token/revoke-self
-            ca_path: /etc/pki/molecule/openbao.crt
+            url: "{{ openbao_api_addr }}/v1/auth/token/revoke-self"
+            ca_path: "{{ openbao_controller_ca_file }}"
             method: POST
             headers:
               X-Vault-Token: "{{ __openbao_test_login.json.auth.client_token }}"
@@ -109,7 +115,7 @@
           ansible.builtin.assert:
             that:
               - >-
-                __openbao_test_audit_log.content | b64decode | split('\n') | reject('equalto', '')
+                (__openbao_test_audit_log.content | b64decode).splitlines() | reject('equalto', '')
                 | map('from_json') | selectattr('type', 'equalto', 'request')
                 | selectattr('request.path', 'equalto', 'auth/token/revoke-self')
                 | selectattr('auth.policies', 'defined')

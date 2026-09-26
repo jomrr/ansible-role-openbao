@@ -42,32 +42,7 @@ initialize "ansible" {
     operation = "update"
     path      = "sys/policies/acl/ansible-admin"
     data = {
-      policy = <<-POLICY
-        path "sys/policies/acl/*" {
-          capabilities = ["create", "read", "update", "delete", "list"]
-        }
-        path "sys/auth" {
-          capabilities = ["read"]
-        }
-        path "sys/auth/*" {
-          capabilities = ["create", "read", "update", "delete", "sudo"]
-        }
-        path "sys/mounts" {
-          capabilities = ["read"]
-        }
-        path "sys/mounts/*" {
-          capabilities = ["create", "read", "update", "delete", "sudo"]
-        }
-        path "auth/*" {
-          capabilities = ["create", "read", "update", "delete", "list"]
-        }
-        path "sys/rotate/recovery/*" {
-          capabilities = ["create", "read", "update", "delete", "sudo"]
-        }
-        path "sys/audit" {
-          capabilities = ["read", "sudo"]
-        }
-      POLICY
+      policy = {{ __openbao_bootstrap_policy | to_json }}
     }
   }
   request "management-auth" {
@@ -79,12 +54,14 @@ initialize "ansible" {
     operation = "update"
     path      = "auth/ansible/role/ansible-admin"
     data = {
-      token_policies     = ["ansible-admin"]
-      token_ttl          = 900
-      token_max_ttl      = 3600
-      bind_secret_id     = true
-      secret_id_ttl      = 0
-      secret_id_num_uses = 0
+      token_policies        = ["ansible-admin"]
+      token_ttl             = 900
+      token_max_ttl         = 3600
+      bind_secret_id        = true
+      secret_id_ttl         = 0
+      secret_id_num_uses    = 0
+      secret_id_bound_cidrs = {{ openbao_bootstrap_bound_cidrs | to_json }}
+      token_bound_cidrs     = {{ openbao_bootstrap_bound_cidrs | to_json }}
     }
   }
   request "management-role-id" {

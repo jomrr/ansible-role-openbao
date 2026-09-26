@@ -8,3 +8,9 @@
   tasks:
     - name: OPENBAO | Prepare systemd and TLS integration fixtures
       ansible.builtin.import_tasks: ../tasks/prepare.yml
+
+    - name: OPENBAO | Fetch the controller trust anchor
+      ansible.builtin.fetch:
+        src: /etc/pki/molecule/openbao.crt
+        dest: "{{ openbao_controller_ca_file }}"
+        flat: true
