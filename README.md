@@ -39,8 +39,7 @@ separate openbao_config role.
 
 ### Not Managed
 
-- Recovery-key generation and export, provided by the openbao_config recovery
-  entry point
+- Recovery-key generation and export
 - Application auth methods, secrets engines and policies, provided by
   openbao_config
 - Audit log rotation and shipping
@@ -319,28 +318,25 @@ unseals itself after the restart.
 
 ## Operational Notes
 
-- With bootstrap disabled, initialize the server once after the first run, for
-  example with `bao operator init -recovery-shares=5 -recovery-threshold=3` and
-  BAO_ADDR and BAO_CACERT set for the API listener. Store the recovery keys and
-  the root token outside the host.
-- With bootstrap enabled, OpenBao creates the ansible/ AppRole mount,
-  ansible-admin policy and AppRole, registers the supplied Role ID and Secret
-  ID, and explicitly revokes the initial root token. The role verifies
-  initialization and the management login; no root token is exported. Recovery
-  keys are generated outside these roles through the authenticated OpenBao
-  recovery workflow before the instance is relied upon for production.
-- Self-initialization runs only on empty storage. Existing installations require
-  a working administrator to establish the management AppRole before enabling
-  bootstrap verification. Failed partial initialization does not replay on
-  restart: repair it with an existing administrator or recovery access. A fresh
-  instance without any working access requires deliberate operator-led
-  reinitialization; this role never removes raft storage.
-- Role ID and Secret ID are registered only during self-initialization. Use the
-  openbao_config secret_id entry point to register a new Secret ID, update
-  Ansible Vault, then revoke the old Secret ID in a separate invocation. The
-  encrypted bootstrap credential is created only when missing; remove it
-  explicitly when reseeding it for a future reinitialization. Keep the Role ID
-  stable.
+- `openbao_bootstrap_enabled: false` (the default) provisions and starts the
+  service without initializing storage or managing bootstrap access. A new
+  instance remains uninitialized after the role completes.
+- To initialize empty storage through the role, set `openbao_bootstrap_enabled:
+  true` and supply `openbao_bootstrap_role_id` and
+  `openbao_bootstrap_secret_id`. The role configures the management AppRole and
+  verifies access from the controller. The initial root token is revoked and is
+  not available as a role output; subsequent automation uses the supplied
+  AppRole credentials.
+- Enabling bootstrap on initialized storage requires an existing management
+  AppRole matching the supplied credentials. Rerunning the role does not replay
+  initialization requests, including those from a partially completed
+  self-initialization. The role never removes raft storage.
+- Role ID and Secret ID are registered only during self-initialization. Changing
+  their role variables does not rotate existing credentials. After
+  initialization, keep the Role ID stable and supply a Secret ID already
+  registered with OpenBao. The encrypted bootstrap credential is created only
+  when missing; remove it explicitly when reseeding it for a future
+  reinitialization.
 - With bootstrap enabled, each normal run reconciles ansible-admin and both
   management CIDR bindings from the controller. Other AppRole settings are
   preserved. openbao_bootstrap_bound_cidrs defaults to [] (unbound); configure
@@ -364,9 +360,6 @@ unseals itself after the restart.
   remove the old entry. Removing an entry disables that declarative device;
   API-created devices are not adopted or removed. An unavailable sole audit sink
   can block API requests.
-- Configure log rotation outside this role and send SIGHUP to openbao.service
-  after rotating audit files so the file descriptors are reopened. The role does
-  not rotate or truncate audit logs.
 - The role encrypts the seal key only when the credential of the selected key
   binding is missing. When the credential can no longer be decrypted, for
   example after replacing the vTPM or the host credential secret, remove the
@@ -376,8 +369,9 @@ unseals itself after the restart.
 - Changing openbao_seal_key or openbao_seal_key_id after initialization leaves
   the storage unreadable. Key rotation requires a seal migration outside this
   role.
-- The distribution package determines the OpenBao version; updates come from the
-  platform package manager.
+- The role installs the distribution OpenBao package with `state: present`.
+  Rerunning the role ensures the package is installed; it does not request an
+  upgrade to the latest version.
 
 ## Supported Platforms
 
@@ -410,8 +404,7 @@ networks with the actual admin and VPN subnets seen by OpenBao.
         openbao_bootstrap_enabled: true
         openbao_bootstrap_bound_cidrs: [192.0.2.0/24, 198.51.100.0/24]
         openbao_bootstrap_role_id: ansible-controller
-        openbao_bootstrap_secret_id: >-
-          {{ vault_openbao_management_secret_id }}
+        openbao_bootstrap_secret_id: "{{ vault_openbao_management_secret_id }}"
         openbao_audit_devices:
           - path: file
             file_path: /var/log/openbao/audit.json
